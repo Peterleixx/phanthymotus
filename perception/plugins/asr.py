@@ -658,7 +658,7 @@ TOOLS = [
                 # The two paraformers and zipformer-en were dropped for accuracy;
                 # REMOVED_ASR_MODELS maps a card still holding one onto its
                 # replacement rather than letting it fail to resolve.
-                "asr_model":     {"type": "string", "enum": ["x-asr-zh-en", "parakeet-en", "sensevoice-small"], "description": "ASR model (x-asr-zh-en = bilingual offline transducer with hotwords, parakeet-en = English offline CTC, noise-robust, sensevoice-small = multilingual offline)", "default": "sensevoice-small", "scope": "shared"},
+                "asr_model":     {"type": "string", "enum": ["x-asr-zh-en", "parakeet-en", "sensevoice-small", "paraformer-zh-compact"], "description": "ASR model (x-asr-zh-en = bilingual offline transducer with hotwords, parakeet-en = English offline CTC, noise-robust, sensevoice-small = multilingual offline)", "default": "sensevoice-small", "scope": "shared"},
                 # Which weights each device loads is in ASR_MODELS; only models
                 # with a verified gpu entry list one, so x-show-when hides this
                 # field for the rest rather than offering a choice that would be
@@ -836,6 +836,34 @@ class ASRAdapter(ABC):
         return self.transcribe(wav_bytes, language), {}
 
 
+class MandarinParaformerAdapter(ASRAdapter):
+    """CPU decoder for the quantized 16 kHz Mandarin Paraformer."""
+
+    def __init__(self, model_dir: str, device: str, num_threads: int):
+        import sherpa_onnx
+
+        self.recognizer = sherpa_onnx.OfflineRecognizer.from_paraformer(
+            paraformer=os.path.join(model_dir, "model.int8.onnx"),
+            tokens=os.path.join(model_dir, "tokens.txt"),
+            provider=device,
+            num_threads=num_threads,
+        )
+
+    def transcribe(self, wav_bytes: bytes, language: str) -> str:
+        import io
+        import wave
+        import numpy as np
+
+        with wave.open(io.BytesIO(wav_bytes)) as wav:
+            pcm = wav.readframes(wav.getnframes())
+            rate = wav.getframerate()
+        stream = self.recognizer.create_stream()
+        samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+        stream.accept_waveform(rate, samples)
+        self.recognizer.decode_stream(stream)
+        return stream.result.text.strip()
+
+
 class SherpaOnnxSenseVoiceAdapter(ASRAdapter):
     """Offline non-autoregressive ASR using SenseVoice-Small (zh/en/ja/ko/cantonese).
 
@@ -1010,6 +1038,15 @@ class SherpaOnnxXASRAdapter(ASRAdapter):
 # counts, and emitted nothing but `</s>`. See utils/onnx_provider.py for the
 # measurements and perception/README.md for the admission checklist.
 ASR_MODELS = {
+    "paraformer-zh-compact": {
+        "label": "Mandarin Paraformer (8,359 tokens, int8)",
+        "adapter": MandarinParaformerAdapter,
+        "devices": {"cpu": {
+            "dir": "/models/sherpa-onnx/paraformer-zh-compact",
+            "dtype": "int8",
+            "download": "asr_paraformer_zh_compact",
+        }},
+    },
     "x-asr-zh-en": {
         "label": "X-ASR Bilingual (zh+en, offline transducer)",
         "adapter": SherpaOnnxXASRAdapter,

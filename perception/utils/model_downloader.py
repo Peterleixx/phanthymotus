@@ -70,6 +70,13 @@ def _progress_hook(name: str, progress_cb=None):
     return hook
 
 MODELS = {
+    "asr_paraformer_zh_compact": {
+        "base_url": "http://172.28.4.81:34567/zengzhitao/embodied-ai/official_paraformer",
+        "files": {
+            "model.int8.onnx": {"size": 81828675, "sha256": "3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec"},
+            "tokens.txt": {"size": 75352, "sha256": "4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa"},
+        },
+    },
     "asr_sensevoice": {
         "url": f"{COS_BASE}/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.zip",
         "check_file": "tokens.txt",
@@ -119,6 +126,10 @@ def ensure_model(name: str, model_dir: str, progress_cb=None,
     info = MODELS.get(name)
     if not info:
         raise ValueError(f"Unknown model name: {name}")
+
+    if "files" in info:
+        ensure_verified_bundle(name, model_dir, info["base_url"], info["files"], progress_cb=progress_cb)
+        return
 
     check_path = os.path.join(model_dir, info["check_file"])
     if os.path.exists(check_path):
