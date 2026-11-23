@@ -285,6 +285,7 @@ TOOLS = [
                 "model":             {"type": "string", "enum": sorted(FACE_MODELS), "default": DEFAULT_FACE_MODEL, "description": "识别模型：" + "；".join(f"{name} = {spec['description']}" for name, spec in sorted(FACE_MODELS.items())) + "。切换模型会重新加载，并使已存样本失效——不同网络的 embedding 不可比较，已注册人员需重新录入"},
                 "device":            {"type": "string", "enum": ["auto", "cpu", "gpu"], "default": "auto", "description": "推理设备。auto=有 GPU 用 GPU，没有则用 CPU"},
                 "detect_fps":        {"type": "number", "minimum": 0, "default": DEFAULT_DETECT_FPS, "description": "检测频率，每秒 x 次，支持小数（如 0.5 = 每 2 秒一次）；0=每帧都检测", "scope": "instance"},
+                "recognition_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "description": "按照片或视频查询身份时使用的阈值。省略时沿用匹配阈值。"},
                 "match_threshold":   {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": DEFAULT_MATCH_THRESHOLD, "description": "余弦相似度阈值，越高越严格（越不容易认错人，但越容易认不出）。留空时按所选模型取推荐值（" + "；".join(f"{name} = {spec['match_threshold']}" for name, spec in sorted(FACE_MODELS.items())) + "）——阈值属于 embedding 空间，换模型后不能照搬旧值"},
                 "min_face_px":       {"type": "integer", "minimum": 16, "default": DEFAULT_MIN_FACE_PX, "description": "最小人脸边长(px)，小于此值不做识别"},
                 "blur_min":          {"type": "number", "minimum": 0.0, "default": DEFAULT_BLUR_MIN, "description": "清晰度下限(拉普拉斯方差)，低于此值视为模糊人脸"},
@@ -408,21 +409,17 @@ def _encode_crop(aligned) -> bytes | None:
         return None
 
 
-def _gates(cfg: dict) -> dict:
+def _gates(cfg: dict, *, read_only: bool = False) -> dict:
     """The quality/ambiguity thresholds, resolved once per call."""
+    threshold = cfg.get("match_threshold", default_match_threshold(str(cfg.get("model", DEFAULT_FACE_MODEL))))
+    if read_only:
+        threshold = cfg.get("recognition_threshold", threshold)
     return {
         "det_thresh": float(cfg.get("det_thresh", DEFAULT_DET_THRESH)),
         "min_face_px": float(cfg.get("min_face_px", DEFAULT_MIN_FACE_PX)),
         "blur_min": float(cfg.get("blur_min", DEFAULT_BLUR_MIN)),
         "dominance": float(cfg.get("subject_dominance", DEFAULT_SUBJECT_DOMINANCE)),
-        # Defaults to the configured model's own threshold rather than one number
-        # for the plugin: buffalo_sc wants 0.35 and scrfd25g_edgeface_s wants 0.55
-        # (see FACE_MODELS). An explicit value in config still wins, so a robot
-        # tuned by hand keeps its number across a model switch.
-        "match_threshold": float(cfg.get(
-            "match_threshold",
-            default_match_threshold(str(cfg.get("model", DEFAULT_FACE_MODEL))),
-        )),
+        "match_threshold": float(threshold),
         "max_faces": int(cfg.get("max_faces", DEFAULT_MAX_FACES)),
     }
 
@@ -2308,7 +2305,7 @@ class FaceRecognitionPlugin:
     def _do_recognize_by_photo(self, args: dict) -> dict:
         engine = self._require_engine()
         cfg = dict(self._plugin_cfg)
-        gates = _gates(cfg)
+        gates = _gates(cfg, read_only=True)
         try:
             data, source = _load_image_bytes(args, cfg)
         except _BadInput as error:
@@ -2325,7 +2322,7 @@ class FaceRecognitionPlugin:
 
     def _do_recognize_by_stream(self, instance_id: str, args: dict) -> dict:
         cfg = dict(self._plugin_cfg)
-        gates = _gates(cfg)
+        gates = _gates(cfg, read_only=True)
         node, failure = self._pick_instance(instance_id)
         if node is None:
             return failure

@@ -603,6 +603,7 @@ plugins:
     # pairs out of 4849 over the line in the LFW sample. Delete this key to take
     # whichever value the configured `model` recommends.
     match_threshold: 0.55
+    recognition_threshold: 0.46  # Read-only identity queries on the EdgeFace-S model.
     # Quality gate. A face below either bound is reported with person_id: null
     # rather than matched or auto-enrolled: matching a blurred 30 px face is a
     # coin flip, and enrolling one wastes an unknown-N slot forever.

@@ -231,6 +231,14 @@ def plugin(monkeypatch, tmp_path):
 
 # ── tool definition ───────────────────────────────────────────────────────────
 
+def test_query_threshold_keeps_enrolment_matching_strict():
+    config = {"model": "scrfd25g_edgeface_s", "match_threshold": 0.55}
+    assert face_plugin._gates(config, read_only=True)["match_threshold"] == 0.55
+    config["recognition_threshold"] = 0.46
+    assert face_plugin._gates(config, read_only=True)["match_threshold"] == 0.46
+    assert face_plugin._gates(config)["match_threshold"] == 0.55
+
+
 def test_tool_shape_matches_the_card_contract():
     tool = face_plugin.TOOLS[0]
     assert tool["name"] == "face_recognition"
