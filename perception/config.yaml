@@ -30,7 +30,7 @@ plugins:
     background_gain: 100
 
   asr:
-    enabled: true
+    enabled: false
     # Matches the configSchema default. SenseVoice on CPU is also the faster of
     # the two int8 options (RTF 14.2x vs 9.1x for streaming paraformer) and has
     # the largest gpu upside (fp16).
@@ -587,7 +587,7 @@ plugins:
     # warns and degrades; `auto` does not warn, since cpu is the expected
     # outcome there. The models are 2.5 MB + 13 MB, so cpu at 1 detection/second
     # is the design point.
-    device: auto
+    device: cpu
     num_threads: 2
     warmup: true
     det_size: [640, 640]
